@@ -1,0 +1,432 @@
+pip install Datasets
+
+from datasets import Dataset, DatasetDict, load_dataset
+
+dataset = load_dataset("mattymchen/natural-instruction-050")
+
+dataset
+
+## DATASET EXPLORATION
+
+import pandas as pd
+
+dataset.set_format(type='pandas')
+
+df = dataset['test'][:]
+df
+
+
+
+
+print("Dimensioni del dataset:", df.shape)
+print("\nInformazioni:",df.info())
+print("\nStatistiche:",df.describe())
+print()
+
+null_value = df.isnull().sum()
+null_value
+
+class_counts = df['label'].value_counts()
+print("Distribuzione label:", (class_counts))
+
+
+dataset['test'][0], dataset['test'][-1]
+
+dataset['test'][:3]
+
+dataset['test'].features
+
+# SPLIT DATASET
+
+train_test_datasets = dataset['test'].train_test_split(0.2)
+
+
+val_test_datasets = train_test_datasets['test'].train_test_split(0.4)
+
+raw_datasets = DatasetDict({
+    'train': train_test_datasets['train'],
+    'val': val_test_datasets['train'],
+    'test': val_test_datasets['test']
+})
+
+import numpy as np
+train_labels = np.array(raw_datasets['train']['label'])
+val_labels = np.array(raw_datasets['val']['label'])
+test_labels = np.array(raw_datasets['test']['label'])
+
+print(np.unique(train_labels, return_counts = True))
+print(np.unique(val_labels, return_counts = True))
+print(np.unique(test_labels, return_counts = True))
+
+raw_datasets
+
+# CLEAN DATA
+
+def isNotNone(example):
+  if example['text']!=None and example['label']!=None:
+    return True
+  else:
+    return False
+
+raw_datasets = raw_datasets.filter(isNotNone)
+
+# TOKENIZATION
+
+!pip install datasets evaluate -U transformers[sentencepiece]
+!pip install accelerate -U
+
+from transformers import AutoTokenizer
+
+checkpoint = "bert-base-uncased"
+tokenizer = AutoTokenizer.from_pretrained(checkpoint)
+
+def tokenize_function(example):
+  return tokenizer(example["text"], truncation=True)
+
+tokenized_datasets = raw_datasets.map(tokenize_function, batched=True, remove_columns=(['text']))
+
+#samples = tokenized_datasets["train"][:8]
+#samples = {k: v for k, v in samples.items()}
+#[len(x) for x in samples["input_ids"]]
+
+#batch = data_collator(samples)
+#{k: v.shape for k, v in batch.items()}
+
+tokenized_datasets
+
+# FINETUNING
+
+from transformers import DataCollatorWithPadding
+
+data_collator=DataCollatorWithPadding(tokenizer=tokenizer)
+
+samples = tokenized_datasets["train"][:2]
+samples = {k: v for k, v in samples.items()}
+[len(x) for x in samples["input_ids"]]
+batch = data_collator(samples)
+{k: v.shape for k, v in batch.items()}
+
+from transformers import AutoModelForSequenceClassification
+
+model = AutoModelForSequenceClassification.from_pretrained(checkpoint, num_labels=2)
+
+import evaluate
+import numpy as np
+
+def compute_metrics(eval_preds):
+  metric = evaluate.load("accuracy")
+  logits, labels = eval_preds
+  predictions = np.argmax(logits, axis=-1)
+  return metric.compute(predictions=predictions, references=labels)
+
+!pip install wandb
+
+import wandb
+wandb.login(key='9438496ed3749f8285616e675c39470ef021cf90')
+
+model = AutoModelForSequenceClassification.from_pretrained(checkpoint, num_labels=2)
+
+def compute_metrics(eval_preds):
+  metric = evaluate.load("accuracy")
+  logits, labels = eval_preds
+  predictions = np.argmax(logits, axis=-1)
+  return metric.compute(predictions=predictions, references=labels)
+
+from transformers import Trainer, TrainingArguments
+import evaluate
+import numpy as np
+
+training_args = TrainingArguments(
+   "test-trainer",
+    evaluation_strategy="steps",
+    eval_steps = 500,
+    num_train_epochs = 10,
+    logging_strategy = "steps",
+    logging_steps=500,
+    #report_to = "wandb"
+)
+
+device = 'cuda'
+trainer = Trainer(
+    model.to(device),
+    training_args,
+    train_dataset=tokenized_datasets["train"],
+    eval_dataset=tokenized_datasets["val"],
+    data_collator=data_collator,
+    tokenizer=tokenizer,
+    compute_metrics=compute_metrics,
+)
+
+
+
+#TRAIN SOLO PER SCREEN PARTI INFERIORI
+trainer.train()
+
+#train 1 DEFINITIVO
+trainer.train()
+
+trainer.train()
+
+#prova3 ultima learning rate
+from transformers import Trainer, TrainingArguments
+model = AutoModelForSequenceClassification.from_pretrained(checkpoint, num_labels=2)
+
+training_args = TrainingArguments(
+   "test-trainer",
+    evaluation_strategy="steps",
+    eval_steps = 500,
+    num_train_epochs = 10,
+    logging_strategy = "steps",
+    logging_steps=500,
+    learning_rate= 2e-5,
+    report_to = "wandb"
+)
+
+
+device = 'cuda'
+trainer = Trainer(
+    model.to(device),
+    training_args,
+    train_dataset=tokenized_datasets["train"],
+    eval_dataset=tokenized_datasets["val"],
+    data_collator=data_collator,
+    tokenizer=tokenizer,
+    compute_metrics=compute_metrics,
+)
+
+
+
+#prova3 ultima learning rate
+#wandb.login(relogin=True, key="")
+trainer.train()
+
+#prova2 learning rate
+trainer.train()
+
+#prova 3 learning rate
+def compute_metrics(eval_preds):
+  metric = evaluate.load("accuracy")
+  logits, labels = eval_preds
+  predictions = np.argmax(logits, axis=-1)
+  return metric.compute(predictions=predictions, references=labels)
+
+
+training_args = TrainingArguments(
+    "test-trainer",
+    evaluation_strategy="steps",
+    eval_steps = 700,
+    num_train_epochs = 4,
+#sistemare    learning_rate=5e-5
+)
+
+device = 'cuda'
+trainer = Trainer(
+    model.to(device),
+    training_args,
+    train_dataset=tokenized_datasets["train"],
+    eval_dataset=tokenized_datasets["val"],
+    data_collator=data_collator,
+    tokenizer=tokenizer,
+    compute_metrics=compute_metrics,
+)
+
+trainer.train()
+
+model.config.id2label
+
+model.config.id2label = {
+    0: "unsuccesful",
+    1: "successful"
+}
+
+model.config.id2label
+
+predictions = trainer.predict(tokenized_datasets["val"])
+
+print(predictions.predictions.shape, predictions.label_ids.shape)
+
+import random
+i = random. randint (0, 709)
+example = tokenized_datasets['val'][i]['input_ids']
+example_label = tokenized_datasets['val'][i]['label']
+
+tokenizer.decode(example)
+
+example_label, predictions.predictions[i].argmax()
+
+preds = np.argmax(predictions.predictions, axis = -1)
+
+import evaluate
+
+metric = evaluate.load("accuracy")
+
+metric = evaluate.load("glue","mrpc")
+
+metric.compute(predictions=preds, references=predictions.label_ids)
+
+metric.compute(predictions=preds, references=predictions.label_ids)
+
+trainer.evaluate(eval_dataset=tokenized_datasets['val'])
+
+trainer.evaluate(eval_dataset=tokenized_datasets['test'])
+
+# SECONDA PROVA FINE TUNING
+
+# prova ultima lr basso
+checkpoint= "distilbert-base-uncased"
+tokenizer = AutoTokenizer.from_pretrained(checkpoint)
+
+from transformers import Trainer, TrainingArguments
+
+def tokenize_function(example):
+  return tokenizer(example["text"], truncation=True)
+
+tokenized_datasets = raw_datasets.map(tokenize_function, batched=True, remove_columns=(['text']))
+
+data_collator=DataCollatorWithPadding(tokenizer=tokenizer)
+
+model = AutoModelForSequenceClassification.from_pretrained(checkpoint, num_labels=2)
+
+
+training_args = TrainingArguments(
+   "test-trainer",
+    evaluation_strategy="steps",
+    eval_steps = 500,
+    num_train_epochs = 10,
+    logging_strategy = "steps",
+    logging_steps=500,
+    learning_rate= 2e-5,
+    report_to = "wandb",
+)
+
+
+device = 'cuda'
+trainer = Trainer(
+    model.to(device),
+    training_args,
+    train_dataset=tokenized_datasets["train"],
+    eval_dataset=tokenized_datasets["val"],
+    data_collator=data_collator,
+    tokenizer=tokenizer,
+    compute_metrics=compute_metrics,
+)
+
+
+# prova ultima lr default
+checkpoint= "distilbert-base-uncased"
+tokenizer = AutoTokenizer.from_pretrained(checkpoint)
+
+from transformers import Trainer, TrainingArguments
+
+def tokenize_function(example):
+  return tokenizer(example["text"], truncation=True)
+
+tokenized_datasets = raw_datasets.map(tokenize_function, batched=True, remove_columns=(['text']))
+
+data_collator=DataCollatorWithPadding(tokenizer=tokenizer)
+
+model = AutoModelForSequenceClassification.from_pretrained(checkpoint, num_labels=2)
+
+
+training_args = TrainingArguments(
+   "test-trainer",
+    evaluation_strategy="steps",
+    eval_steps = 500,
+    num_train_epochs = 10,
+    logging_strategy = "steps",
+    logging_steps=500,
+    report_to = "wandb",
+)
+
+
+device = 'cuda'
+trainer = Trainer(
+    model.to(device),
+    training_args,
+    train_dataset=tokenized_datasets["train"],
+    eval_dataset=tokenized_datasets["val"],
+    data_collator=data_collator,
+    tokenizer=tokenizer,
+    compute_metrics=compute_metrics,
+)
+
+# prova ultima lr default
+trainer.train()
+
+#prova ultima distil bert lr basso
+
+trainer.train()
+
+trainer.train()
+
+trainer.train()
+
+predictions = trainer.predict(tokenized_datasets["val"])
+predictions.predictions.shape, predictions.label_ids.shape
+
+example = tokenized_datasets['val'][i]['input_ids']
+example_label = tokenized_datasets['val'][i]['label']
+
+tokenizer.decode(example)
+
+example_label,  predictions.predictions[i].argmax()
+
+preds = np.argmax(predictions.predictions, axis = -1)
+metric.compute(predictions=preds, references=predictions.label_ids)
+
+trainer.evaluate(eval_dataset=tokenized_datasets['val'])
+
+trainer.evaluate(eval_dataset=tokenized_datasets['test'])
+
+#training_args= TrainingArguments(
+#    output_dir="./",
+#    num_train_epochs=6.0,
+#    evaluation_strategy="steps",
+#    logging_steps=500,
+#    report_to = 'wandb'
+#)
+
+#trainer = Trainer(
+#    model.to(device),
+#    training_args,
+#    train_dataset=tokenized_datasets["train"],
+#    eval_dataset=tokenized_datasets["val"],
+#    data_collator=data_collator,
+#    tokenizer=tokenizer,
+#)
+
+# REPORT TO WANDB AND LOAD TO HUGGINGFACE
+
+import huggingface_hub
+
+huggingface_hub.login()
+
+model.push_to_hub("AgneseSpinella/Question-Answer-Matching", create_pr=1)
+
+!pip install wandb
+
+import wandb
+wandb.login(key='9438496ed3749f8285616e675c39470ef021cf90')
+#wandb.login(relogin=True, key="")
+
+training_args = TrainingArguments(
+    "final-trainer",
+    evaluation_strategy="steps",
+    eval_steps = 500,
+    num_train_epochs = 30,
+    report_to = "wandb"
+)
+
+trainer = Trainer(
+    model.to(device),
+    training_args,
+    train_dataset=tokenized_datasets["train"],
+    eval_dataset=tokenized_datasets["val"],
+    data_collator=data_collator,
+    tokenizer=tokenizer,
+    compute_metrics = compute_metrics
+)
+
+trainer.train()
+
+predictions = trainer.predict(tokenized_datasets["val"])
